@@ -8,29 +8,6 @@ pipeline {
     }
 
     stages {
-        stage('Start Docker Desktop') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        sh 'open /Applications/Docker.app'  // For Mac
-                    } else {
-                        bat 'start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"'  // For Windows
-                    }
-                }
-                sleep(time: 20, unit: 'SECONDS')  // Wait for Docker to start
-                sh 'docker --version'  // Verify Docker is running
-            }
-        }
-
-        stage('Start Minikube') {
-            steps {
-                script {
-                    sh 'minikube start --driver=docker'
-                }
-                sh 'minikube status'  // Verify Minikube is running
-            }
-        }
-
         stage('Clone Repository') {
             steps {
                 git 'https://github.com/akiru-91/resume-builder.git'
