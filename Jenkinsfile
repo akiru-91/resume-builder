@@ -6,6 +6,7 @@ pipeline {
         DOCKER_TAG = "latest"
         K8S_DEPLOYMENT = "resume-deployment"
         K8S_SERVICE = "resume-service"
+        PATH = "C:\\WINDOWS\\SYSTEM32"
     }
 
     stages {
