@@ -12,7 +12,7 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                bat 'git clone https://github.com/akiru-91/resume-builder.git'
+                bat '"C:\\Program Files\\Git\\cmd\\git.exe" clone https://github.com/akiru-91/resume-builder.git'
             }
         }
 
