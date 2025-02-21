@@ -1,94 +1,63 @@
 pipeline {
     agent any
-    
     environment {
-        DOCKER_IMAGE = "resume-builder"
-        DOCKER_TAG = "latest"
-        K8S_DEPLOYMENT = "resume-deployment"
-        K8S_SERVICE = "resume-service"
-        PATH = "C:\\WINDOWS\\SYSTEM32"
+        PYTHON_PATH = "/c/Users/akhil/AppData/Local/Programs/Python/Python3X/python.exe"
     }
-
     stages {
         stage('Clone Repository') {
             steps {
-                bat 'rmdir /s /q resume-builder'  // Delete existing repo
-                bat '"C:\\Program Files\\Git\\cmd\\git.exe" clone https://github.com/akiru-91/resume-builder.git'
+                sh """
+                    rm -rf resume-builder || true  # Remove old repo if exists
+                    git clone https://github.com/akiru-91/resume-builder.git
+                """
             }
         }
 
-        stage('Setup Python Virtual Environment') {
+        stage('Setup Python Virtual Env') {
             steps {
-                bat '''
-                    "C:\\Users\\akhil\\AppData\\Local\\Programs\\Python\\Python3X\\python.exe" -m venv venv
-                    call venv\\Scripts\\activate
+                sh """
+                    ${PYTHON_PATH} -m venv venv
+                    source venv/Scripts/activate
                     pip install -r requirements.txt
-                '''
+                """
             }
         }
 
-        stage('Run Tests with Pytest') {
+        stage('Run Tests') {
             steps {
-                bat '''
-                call venv\\Scripts\\activate
-                pytest tests/
-                '''
+                sh """
+                    source venv/Scripts/activate
+                    pytest tests/
+                """
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                bat "docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% ."
+                sh """
+                    docker build -t resume-builder:latest .
+                """
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([string(credentialsId: 'docker-hub-password', variable: 'DOCKER_PASSWORD')]) {
-                    bat '''
-                    echo %DOCKER_PASSWORD% | docker login -u akiru091 --password-stdin
-                    docker tag %DOCKER_IMAGE%:%DOCKER_TAG% akiru091/%DOCKER_IMAGE%:%DOCKER_TAG%
-                    docker push akiru091/%DOCKER_IMAGE%:%DOCKER_TAG%
-                    '''
-                }
+                sh """
+                    echo "\$DOCKER_PASSWORD" | docker login -u "\$DOCKER_USERNAME" --password-stdin
+                    docker tag resume-builder:latest akiru091/resume-builder:latest
+                    docker push akiru091/resume-builder:latest
+                """
             }
         }
 
-        stage('Start Docker Desktop & Minikube') {
+        stage('Deploy to Minikube') {
             steps {
-                bat '''
-                start /B "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"
-                timeout /t 30
-                minikube start
-                '''
+                sh """
+                    minikube start
+                    kubectl apply -f k8s/deployment.yaml
+                    kubectl apply -f k8s/service.yaml
+                """
             }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                bat '''
-                kubectl apply -f k8s/deployment.yaml
-                kubectl apply -f k8s/service.yaml
-                '''
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                bat '''
-                kubectl get pods
-                kubectl get services
-                '''
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Pipeline executed successfully!"
-        }
-        failure {
-            echo "Pipeline failed. Check logs for errors."
         }
     }
 }
