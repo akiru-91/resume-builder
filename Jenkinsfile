@@ -12,6 +12,7 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
+                bat 'rmdir /s /q resume-builder'  // Delete existing repo
                 bat '"C:\\Program Files\\Git\\cmd\\git.exe" clone https://github.com/akiru-91/resume-builder.git'
             }
         }
