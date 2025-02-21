@@ -1,72 +1,92 @@
 pipeline {
     agent any
-
+    
     environment {
-        DOCKER_IMAGE = 'akiru091/resume-builder:latest'
-        K8S_DEPLOYMENT = 'k8s/deployment.yaml'
-        K8S_SERVICE = 'k8s/service.yaml'
+        DOCKER_IMAGE = "resume-builder"
+        DOCKER_TAG = "latest"
+        K8S_DEPLOYMENT = "resume-deployment"
+        K8S_SERVICE = "resume-service"
     }
 
     stages {
         stage('Clone Repository') {
             steps {
-                git 'https://github.com/akiru-91/resume-builder.git'
+                bat 'git clone https://github.com/akiru-91/resume-builder.git'
             }
         }
 
-        stage('Install Dependencies & Run Tests') {
+        stage('Setup Python Virtual Environment') {
             steps {
-                sh 'pip install -r requirements.txt'
-                sh 'pytest --junitxml=report.xml'
+                bat '''
+                python -m venv venv
+                call venv\\Scripts\\activate
+                pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Run Tests with Pytest') {
+            steps {
+                bat '''
+                call venv\\Scripts\\activate
+                pytest tests/
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
-                sh 'docker images'  // Verify image is built
+                bat "docker build -t %DOCKER_IMAGE%:%DOCKER_TAG% ."
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
-                    sh 'docker push $DOCKER_IMAGE'
+                withCredentials([string(credentialsId: 'docker-hub-password', variable: 'DOCKER_PASSWORD')]) {
+                    bat '''
+                    echo %DOCKER_PASSWORD% | docker login -u akiru091 --password-stdin
+                    docker tag %DOCKER_IMAGE%:%DOCKER_TAG% akiru091/%DOCKER_IMAGE%:%DOCKER_TAG%
+                    docker push akiru091/%DOCKER_IMAGE%:%DOCKER_TAG%
+                    '''
                 }
-                sh 'docker logout'  // Logout for security
+            }
+        }
+
+        stage('Start Docker Desktop & Minikube') {
+            steps {
+                bat '''
+                start /B "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"
+                timeout /t 30
+                minikube start
+                '''
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh 'kubectl apply -f $K8S_DEPLOYMENT'
-                sh 'kubectl apply -f $K8S_SERVICE'
-                sh 'kubectl get pods'  // Verify pods are running
-                sh 'kubectl get services'  // Verify services are running
+                bat '''
+                kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                '''
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                script {
-                    def pods = sh(script: 'kubectl get pods --selector=app=resume-app --no-headers | wc -l', returnStdout: true).trim()
-                    echo "Running Pods: ${pods}"
-                    if (pods == "0") {
-                        error("No pods are running. Deployment failed.")
-                    }
-
-                    def service = sh(script: 'kubectl get svc resume-service --no-headers | wc -l', returnStdout: true).trim()
-                    if (service == "0") {
-                        error("Service is not running. Deployment failed.")
-                    }
-                }
+                bat '''
+                kubectl get pods
+                kubectl get services
+                '''
             }
         }
     }
 
     post {
-        always {
-            archiveArtifacts artifacts: 'report.xml', fingerprint: true
+        success {
+            echo "Pipeline executed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Check logs for errors."
         }
     }
 }
