@@ -8,3 +8,7 @@ K Goutham: Responsible for creating docker image and container, also testing usa
 Akhilesh Kanagali: Resposible for pipeline setup using Jenkins and deploying docker image using Kubernetes cluster.
 
 ![alt text](image.png)
+![alt text](image-1.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
