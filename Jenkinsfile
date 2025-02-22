@@ -1,63 +1,95 @@
 pipeline {
     agent any
+
     environment {
-        PYTHON_PATH = "/c/Users/akhil/AppData/Local/Programs/Python/Python3X/python.exe"
+        DOCKER_IMAGE = 'akiru091/resume-builder:latest'
+        K8S_DEPLOYMENT = 'k8s/deployment.yaml'
+        K8S_SERVICE = 'k8s/service.yaml'
     }
+
     stages {
         stage('Clone Repository') {
             steps {
-                sh """
-                    rm -rf resume-builder || true  # Remove old repo if exists
-                    git clone https://github.com/akiru-91/resume-builder.git
-                """
+                git branch: 'main', url: 'https://github.com/akiru-91/resume-builder.git'
             }
         }
 
-        stage('Setup Python Virtual Env') {
+        stage('Start Docker Desktop') {
             steps {
-                sh """
-                    ${PYTHON_PATH} -m venv venv
-                    source venv/Scripts/activate
-                    pip install -r requirements.txt
-                """
+                script {
+                    if (isUnix()) {
+                        sh 'open /Applications/Docker.app'  // For Mac
+                    } else {
+                        bat 'start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"'  // For Windows
+                    }
+                }
+                sleep(time: 20, unit: 'SECONDS')  // Wait for Docker to start
+                sh 'docker --version'  // Verify Docker is running
             }
         }
 
-        stage('Run Tests') {
+        stage('Start Minikube') {
             steps {
-                sh """
-                    source venv/Scripts/activate
-                    pytest tests/
-                """
+                script {
+                    sh 'minikube start --driver=docker'
+                }
+                sh 'minikube status'  // Verify Minikube is running
+            }
+        }
+
+        stage('Install Dependencies & Run Tests') {
+            steps {
+                sh 'pip install -r requirements.txt'
+                sh 'pytest --junitxml=report.xml'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                    docker build -t resume-builder:latest .
-                """
+                sh 'docker build -t $DOCKER_IMAGE .'
+                sh 'docker images'  // Verify image is built
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                sh """
-                    echo "\$DOCKER_PASSWORD" | docker login -u "\$DOCKER_USERNAME" --password-stdin
-                    docker tag resume-builder:latest akiru091/resume-builder:latest
-                    docker push akiru091/resume-builder:latest
-                """
+                withDockerRegistry([credentialsId: 'docker-hub-credentials', url: 'https://index.docker.io/v1/']) {
+                    sh 'docker push $DOCKER_IMAGE'
+                }
+                sh 'docker logout'  // Logout for security
             }
         }
 
-        stage('Deploy to Minikube') {
+        stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    minikube start
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl apply -f k8s/service.yaml
-                """
+                sh 'kubectl apply -f $K8S_DEPLOYMENT'
+                sh 'kubectl apply -f $K8S_SERVICE'
+                sh 'kubectl get pods'  // Verify pods are running
+                sh 'kubectl get services'  // Verify services are running
             }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    def pods = sh(script: 'kubectl get pods --selector=app=resume-app --no-headers | wc -l', returnStdout: true).trim()
+                    echo "Running Pods: ${pods}"
+                    if (pods == "0") {
+                        error("No pods are running. Deployment failed.")
+                    }
+
+                    def service = sh(script: 'kubectl get svc resume-service --no-headers | wc -l', returnStdout: true).trim()
+                    if (service == "0") {
+                        error("Service is not running. Deployment failed.")
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'report.xml', fingerprint: true
         }
     }
 }

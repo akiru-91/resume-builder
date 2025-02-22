@@ -9,4 +9,4 @@ spec:
     - protocol: TCP
       port: 80     # External access port
       targetPort: 5000  # Flask app port inside the container
-  type: LoadBalancer  # Change to ClusterIP for internal access
+  type: LoadBalancer  
